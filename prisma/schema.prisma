@@ -1,0 +1,261 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  ESTOQUISTA
+  LIDER
+  ADMINISTRADOR
+}
+
+enum MovementType {
+  ENTRADA
+  SAIDA
+}
+
+enum AlertStatus {
+  ATIVO
+  RESOLVIDO
+}
+
+enum InventoryStatus {
+  EM_ANDAMENTO
+  CONCLUIDO
+}
+
+enum NfStatus {
+  ABERTA
+  BAIXADA
+  PARCIAL
+}
+
+enum AlertType {
+  ESTOQUE_BAIXO
+  DIVERGENCIA_INVENTARIO
+}
+
+enum LogAction {
+  LOGIN
+  LOGOUT
+  PRODUTO_CRIADO
+  PRODUTO_EDITADO
+  ENTRADA_REGISTRADA
+  SAIDA_REGISTRADA
+  NF_EMITIDA
+  NF_BAIXADA
+  NF_PARCIAL
+  INVENTARIO_INICIADO
+  INVENTARIO_FINALIZADO
+  ALERTA_GERADO
+  ALERTA_RESOLVIDO
+  USUARIO_CRIADO
+  USUARIO_EDITADO
+  FORNECEDOR_CRIADO
+  FORNECEDOR_EDITADO
+  CLIENTE_CRIADO
+  CLIENTE_EDITADO
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  matricula String   @unique
+  nome      String
+  email     String   @unique
+  senha     String
+  role      UserRole @default(ESTOQUISTA)
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movements  Movement[]
+  inventories Inventory[]
+  logs       Log[]
+  nfs        NotaFiscalCliente[]
+
+  @@map("users")
+}
+
+model Cliente {
+  id        String   @id @default(cuid())
+  nome      String   @unique
+  cnpj      String?
+  email     String?
+  telefone  String?
+  contato   String?
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+  nfs      NotaFiscalCliente[]
+
+  @@map("clientes")
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  nome      String
+  cnpj      String?  @unique
+  email     String?
+  telefone  String?
+  contato   String?
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+
+  @@map("suppliers")
+}
+
+model Product {
+  id               String   @id @default(cuid())
+  codigo           String   @unique
+  nome             String
+  modelo           String   @default("-")
+  descricao        String?
+  unidade          String   @default("un")
+  quantidade       Int      @default(0)
+  quantidadeMinima Int      @default(0)
+  supplierId       String?
+  clienteId        String?
+  ativo            Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  supplier       Supplier?       @relation(fields: [supplierId], references: [id])
+  cliente        Cliente?        @relation(fields: [clienteId], references: [id])
+  movements      Movement[]
+  nfItems        NfItem[]
+  inventoryItems InventoryItem[]
+  alerts         Alert[]
+
+  @@map("products")
+}
+
+model NotaFiscalCliente {
+  id          String   @id @default(cuid())
+  numero      String
+  clienteId   String
+  userId      String
+  status      NfStatus @default(ABERTA)
+  observacao  String?
+  dataEmissao DateTime @default(now())
+  dataBaixa   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  cliente   Cliente    @relation(fields: [clienteId], references: [id])
+  user      User       @relation(fields: [userId], references: [id])
+  movements Movement[]
+  items     NfItem[]
+
+  @@map("notas_fiscais_clientes")
+}
+
+model Movement {
+  id          String       @id @default(cuid())
+  type        MovementType
+  quantidade  Int
+  notaFiscal  String?
+  observacao  String?
+  productId   String
+  userId      String
+  nfId        String?
+  createdAt   DateTime     @default(now())
+
+  product Product           @relation(fields: [productId], references: [id])
+  user    User              @relation(fields: [userId], references: [id])
+  nf      NotaFiscalCliente? @relation(fields: [nfId], references: [id])
+
+  @@map("movements")
+}
+
+model NfItem {
+  id                String @id @default(cuid())
+  nfId              String
+  productId         String
+  quantidade        Int
+  quantidadeBaixada Int    @default(0)
+  observacao        String?
+
+  nf      NotaFiscalCliente @relation(fields: [nfId], references: [id])
+  product Product           @relation(fields: [productId], references: [id])
+
+  @@map("nf_items")
+}
+
+model Inventory {
+  id            String          @id @default(cuid())
+  responsavel   String
+  matricula     String
+  status        InventoryStatus @default(EM_ANDAMENTO)
+  userId        String
+  iniciadoEm    DateTime        @default(now())
+  finalizadoEm  DateTime?
+
+  user  User            @relation(fields: [userId], references: [id])
+  items InventoryItem[]
+
+  @@map("inventories")
+}
+
+model InventoryItem {
+  id                 String  @id @default(cuid())
+  inventoryId        String
+  productId          String
+  quantidadeContada  Int     @default(0)
+  quantidadeSistema  Int
+  divergencia        Int     @default(0)
+  conferido          Boolean @default(false)
+  observacao         String?
+
+  inventory Inventory @relation(fields: [inventoryId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@map("inventory_items")
+}
+
+model Alert {
+  id               String      @id @default(cuid())
+  tipo             AlertType   @default(ESTOQUE_BAIXO)
+  productId        String
+  quantidadeAtual  Int
+  quantidadeMinima Int
+  status           AlertStatus @default(ATIVO)
+  resolvidoEm      DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("alerts")
+}
+
+model Log {
+  id         String    @id @default(cuid())
+  action     LogAction
+  descricao  String
+  entidade   String?
+  entidadeId String?
+  ipAddress  String?
+  userId     String?
+  createdAt  DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("logs")
+}

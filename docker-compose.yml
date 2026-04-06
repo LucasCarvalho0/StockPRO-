@@ -1,0 +1,38 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: stockpro_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: stockpro2026
+      POSTGRES_DB: stockpro_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: stockpro_app
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://postgres:stockpro2026@postgres:5432/stockpro_db
+      JWT_SECRET: stockpro-super-secret-jwt-key-2026
+      JWT_EXPIRES_IN: 8h
+      NODE_ENV: production
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && tsx prisma/seed.ts && node server.js"
+
+volumes:
+  postgres_data:
